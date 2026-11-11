@@ -52,19 +52,39 @@ Nguyên nhân: model gọi song song mọi tool ở step 1 rồi trả lời lu�
   - H1/H6: lần đầu chỉ thêm quy tắc vào prompt, chạy thử H1 vẫn 60 điểm, trace vẫn chỉ có 1 tool step
     (model bỏ qua quy tắc). Vì vậy chuyển sang kiểm tra bằng code. Sau đó H1 đạt 100, trace có thêm step đọc incident được tham chiếu.
   - Không hard-code ID hay câu trả lời: kiểm tra tham chiếu áp dụng cho mọi incident.
-
 ## 4. So sánh hai lần chạy
+
+Cấu hình giống nhau: agent và judge đều là openai/gpt-4.1-mini, max_steps 8, dataset core, snapshot 09/11/2026.
 
 | Chỉ số | `eval_before.json` | `eval_after.json` |
 |---|---|---|
-| Điểm tổng |  |  |
-| Điểm case đã chọn |  |  |
-| Số model calls |  |  |
-| Token, chi phí nếu có |  |  |
+| Điểm tổng | 92.77 | 97.32 |
+| Điểm case đã chọn | H7: 50 · H1: 60 · H6: 60 | H7: 100 · H1: 95 · H6: 100 |
+| Số model calls | 46 | 53 (+15%) |
+| Token | prompt 26,111 · completion 6,200 | prompt 49,550 · completion 7,272 |
+
+- Chi phí: provider không trả số tiền; token prompt gần gấp đôi do system prompt dài hơn và thêm step đọc incident
+  được tham chiếu (mỗi step gửi lại toàn bộ hội thoại, gồm cả tool result trước đó).
 
 - Lỗi đã giải quyết:
+  - H7: Cloudflare timeout, agent nêu "không xác định" thay vì bịa "operational".
+  - H1/H6: agent đọc tiếp incident xr3myzj7ms51 được tham chiếu; trace có 2 tool steps, hết bị giới hạn điểm 60.
+
 - Lỗi còn lại hoặc mới xuất hiện:
+  - H2: 100 → 50. Agent chỉ gọi get_incident_details, không gọi get_status dù câu hỏi yêu cầu kiểm tra snapshot;
+    mechanical: "Chưa gọi tool cần thiết: get_status", score_cap 50. Trace không có event validation nào,
+    nên không do thay đổi của tôi; lần 1 cùng câu hỏi đã gọi get_status. Đây là biến động ngẫu nhiên của model.
+    Hướng sửa: thêm quy tắc "câu hỏi về tình trạng hiện tại phải gọi get_status". Không sửa và chạy lại ở lần này
+    để giữ đúng một vòng so sánh.
 
 ## 5. Giới hạn
 
-Nêu giới hạn của điểm judge, của snapshot và của việc chỉ chạy một lần mỗi phiên bản.
+- Judge: dùng cùng model với agent (gpt-4.1-mini) nên có thể thiên vị khi tự chấm; điểm judge là ước lượng.
+  Lúc đầu dùng gpt-4o-mini, judge trả JSON lỗi nên case bị unscored; đã đổi model trước khi chạy eval_before.
+- Snapshot: dữ liệu cố định ngày 09/11/2026, không phản ánh trạng thái thực tế hiện tại.
+- Một lần chạy: model không cho kết quả giống nhau mỗi lần (H2 là ví dụ). Mức tăng 92.77 → 97.32 chưa chứng minh
+  được độ ổn định; cần chạy nhiều lần và lấy trung bình.
+- Cải tiến: quy tắc trong prompt chỉ tăng xác suất làm đúng (quy tắc đọc tham chiếu trong prompt đã không đủ
+  cho H1). Kiểm tra URL chỉ xác nhận có mặt một URL, không chứng minh mọi thông tin đều đúng nguồn.
+  Kiểm tra tham chiếu chỉ bắt link dạng /incidents/<id> và chỉ nhắc một lần.
+- Chi phí: thêm khoảng 15% model calls, token prompt gần gấp đôi.
