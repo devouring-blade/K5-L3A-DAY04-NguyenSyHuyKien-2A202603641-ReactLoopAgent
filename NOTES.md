@@ -1,8 +1,5 @@
 # Ghi chú phân tích · Day 04
 
-Họ và tên:
-MSSV:
-
 Họ và tên: Nguyễn Sỹ Huy Kiên
 MSSV: 2A202603641
 
