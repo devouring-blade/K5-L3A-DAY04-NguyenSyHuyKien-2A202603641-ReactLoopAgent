@@ -25,6 +25,8 @@ def run_agent(question, provider, tools, max_steps=6):
     usage = []
     answer = ""
 
+    seen_urls = set()   # URL của các incident đọc thành công
+
     for step in range(1, max_steps + 1):
         # gọi LLM với toàn bộ hội thoại + danh sách tool
 
@@ -58,6 +60,10 @@ def run_agent(question, provider, tools, max_steps=6):
 
             trace.append({"event": "tool", "step": step, "name": call["name"],
                           "arguments": args, "result": result})
+
+            if call["name"] == "get_incident_details" and isinstance(result, dict) and result.get("ok") and result.get("url"):
+                seen_urls.add(result["url"])
+            
             # mọi call đều phải có tool result kèm đúng ID
             messages.append({"role": "tool", "tool_call_id": call["id"],
                              "content": json.dumps(result, ensure_ascii=False)})
@@ -65,7 +71,17 @@ def run_agent(question, provider, tools, max_steps=6):
 
         # không còn tool call → model đã dừng
         if not response["calls"]:
+            # if response["finish"] == "stop":
+            #     return {"status": "completed", "answer": answer, "trace": trace, "usage": usage}
             if response["finish"] == "stop":
+                # đã đọc incident mà answer không dẫn URL nào → yêu cầu model sửa
+                if seen_urls and not any(u in answer for u in seen_urls):
+                    trace.append({"event": "validation_missing_source", "step": step,
+                                  "expected_any_of": sorted(seen_urls)})
+                    messages.append({"role": "user", "content":
+                        "Câu trả lời chưa dẫn URL của incident đã đọc. Hãy viết lại câu trả lời "
+                        "và trích dẫn ít nhất một URL sau: " + ", ".join(sorted(seen_urls))})
+                    continue    # gọi model lần nữa; nếu hết step thì vòng lặp kết thúc → max_steps
                 return {"status": "completed", "answer": answer, "trace": trace, "usage": usage}
             return {"status": "error", "answer": answer, "trace": trace, "usage": usage}
 
